@@ -36,8 +36,41 @@ void thickLine(Image& img, double x0, double y0, double x1, double y1, double w,
     }
 }
 
-// 在指定格内画一个"行走"角色：椭圆身体、圆头、正弦摆腿、马尾
-void drawCharacter(Image& img, int ox, int oy, int cell, double phase) {
+// 角色风格（配色与发型特征）
+struct CharStyle {
+    uint8_t leg[3], shoe[3], body[3], arm[3], skin[3], hair[3], hairDark[3], trim[3];
+    bool longHair = false; // 长直发（身后垂落）替代马尾
+    bool headset = false;  // 耳机
+};
+
+CharStyle defaultStyle() {
+    CharStyle s{};
+    s.leg[0]=40; s.leg[1]=44; s.leg[2]=64;
+    s.shoe[0]=30; s.shoe[1]=30; s.shoe[2]=36;
+    s.body[0]=70; s.body[1]=160; s.body[2]=150;
+    s.arm[0]=60; s.arm[1]=140; s.arm[2]=132;
+    s.skin[0]=240; s.skin[1]=205; s.skin[2]=180;
+    s.hair[0]=60; s.hair[1]=50; s.hair[2]=45;
+    return s;
+}
+
+// 巡音流歌（Megurine Luka）：粉色长直发、深色金边长裙、耳机
+CharStyle lukaStyle() {
+    CharStyle s = defaultStyle();
+    s.leg[0]=30; s.leg[1]=30; s.leg[2]=42;      // 过膝长靴（深色）
+    s.shoe[0]=215; s.shoe[1]=175; s.shoe[2]=80; // 金色鞋头
+    s.body[0]=38; s.body[1]=38; s.body[2]=56;   // 深色长裙
+    s.arm[0]=45; s.arm[1]=45; s.arm[2]=62;      // 黑色袖套
+    s.hair[0]=250; s.hair[1]=165; s.hair[2]=185;    // 粉发
+    s.hairDark[0]=222; s.hairDark[1]=128; s.hairDark[2]=152;
+    s.trim[0]=215; s.trim[1]=175; s.trim[2]=80;     // 金边
+    s.longHair = true;
+    s.headset = true;
+    return s;
+}
+
+// 在指定格内画一个"行走"角色：椭圆身体、圆头、正弦摆腿、马尾/长发
+void drawCharacter(Image& img, int ox, int oy, int cell, double phase, const CharStyle& st) {
     double u = cell / 256.0;          // 以 256 格为基准的比例尺
     double cx = ox + cell * 0.5;
     double hipY = oy + cell * 0.62;
@@ -56,30 +89,53 @@ void drawCharacter(Image& img, int ox, int oy, int cell, double phase) {
         double footY = hipY + std::cos(swing) * legLen - lift;
         double kneeX = (hipX + footX) / 2 + 8 * u;
         double kneeY = (hipY + footY) / 2;
-        thickLine(img, hipX, hipY, kneeX, kneeY, 13 * u, 40, 44, 64);
-        thickLine(img, kneeX, kneeY, footX, footY, 11 * u, 40, 44, 64);
-        fillEllipse(img, footX + 4 * u, footY, 10 * u, 5 * u, 30, 30, 36); // 鞋
+        thickLine(img, hipX, hipY, kneeX, kneeY, 13 * u, st.leg[0], st.leg[1], st.leg[2]);
+        thickLine(img, kneeX, kneeY, footX, footY, 11 * u, st.leg[0], st.leg[1], st.leg[2]);
+        fillEllipse(img, footX + 4 * u, footY, 10 * u, 5 * u, st.shoe[0], st.shoe[1], st.shoe[2]); // 鞋
     }
 
-    // 身体（青绿色外套）
-    fillEllipse(img, cx, bodyCy, cell * 0.16, cell * 0.20, 70, 160, 150);
+    // 长直发（画在身体之前 -> 垂在身后；发根部被头/身体覆盖，保持连通）
+    if (st.longHair) {
+        double sway = std::sin(phase - 0.9) * 9 * u; // 摆动略滞后于腿
+        double hx = headCx - headR * 0.2, hy = headCy - headR * 0.5;
+        double midX = headCx - headR * 1.8 - sway, midY = oy + cell * 0.45;
+        double tipX = headCx - headR * 1.6 - sway * 1.9, tipY = oy + cell * 0.72; // 垂到膝部
+        thickLine(img, hx, hy, midX, midY, 18 * u, st.hair[0], st.hair[1], st.hair[2]);
+        thickLine(img, midX, midY, tipX, tipY, 13 * u, st.hairDark[0], st.hairDark[1], st.hairDark[2]);
+    }
+
+    // 身体
+    fillEllipse(img, cx, bodyCy, cell * 0.16, cell * 0.20, st.body[0], st.body[1], st.body[2]);
+    if (st.longHair) // 胸前金边装饰
+        thickLine(img, cx - cell * 0.10, oy + cell * 0.40, cx + cell * 0.12, oy + cell * 0.42,
+                  3 * u, st.trim[0], st.trim[1], st.trim[2]);
     // 手臂（与腿反相摆动）
     for (int side = 0; side < 2; ++side) {
         double ph = phase + (side ? 0 : M_PI);
         double shX = cx + (side ? 13 : -13) * u, shY = oy + cell * 0.40;
         double handX = shX + std::sin(ph) * 0.5 * cell * 0.16;
         double handY = shY + cell * 0.20;
-        thickLine(img, shX, shY, handX, handY, 9 * u, 60, 140, 132);
+        thickLine(img, shX, shY, handX, handY, 9 * u, st.arm[0], st.arm[1], st.arm[2]);
     }
     // 头
-    fillCircle(img, headCx, headCy, headR, 240, 205, 180);
-    fillEllipse(img, headCx, headCy - headR * 0.55, headR * 1.02, headR * 0.62, 60, 50, 45); // 头发
-    // 马尾（摆动相位略滞后于腿；最后画保证与头部连通）
-    double tailSwing = std::sin(phase - 0.9) * 14 * u;
-    thickLine(img, headCx - headR * 0.5, headCy - headR * 0.2,
-              headCx - headR * 1.4 - tailSwing, headCy + headR * 1.6, 10 * u, 60, 50, 45);
-    thickLine(img, headCx - headR * 1.4 - tailSwing, headCy + headR * 1.6,
-              headCx - headR * 1.9 - tailSwing * 1.6, headCy + headR * 3.0, 7 * u, 60, 50, 45);
+    fillCircle(img, headCx, headCy, headR, st.skin[0], st.skin[1], st.skin[2]);
+    fillEllipse(img, headCx, headCy - headR * 0.55, headR * 1.02, headR * 0.62,
+                st.hair[0], st.hair[1], st.hair[2]); // 头发
+    if (st.headset) { // 耳机：头顶细梁 + 耳罩
+        thickLine(img, headCx - headR * 0.7, headCy - headR * 0.55,
+                  headCx + headR * 0.55, headCy - headR * 0.8, 3 * u, 40, 40, 48);
+        fillCircle(img, headCx - headR * 0.72, headCy + headR * 0.05, headR * 0.30, 45, 45, 55);
+    }
+    if (!st.longHair) {
+        // 马尾（摆动相位略滞后于腿；最后画保证与头部连通）
+        double tailSwing = std::sin(phase - 0.9) * 14 * u;
+        thickLine(img, headCx - headR * 0.5, headCy - headR * 0.2,
+                  headCx - headR * 1.4 - tailSwing, headCy + headR * 1.6, 10 * u,
+                  st.hair[0], st.hair[1], st.hair[2]);
+        thickLine(img, headCx - headR * 1.4 - tailSwing, headCy + headR * 1.6,
+                  headCx - headR * 1.9 - tailSwing * 1.6, headCy + headR * 3.0, 7 * u,
+                  st.hair[0], st.hair[1], st.hair[2]);
+    }
 }
 
 // 判定像素是否接近白色背景（用于切帧时的包围盒检测）
@@ -91,15 +147,19 @@ bool isBg(const uint8_t* p) {
 
 } // namespace
 
-void genSheet(const std::string& out, int cols, int rows, int cell) {
-    printf("[gensheet] %dx%d 格, 单元 %dpx -> %s\n", cols, rows, cell, out.c_str());
+void genSheet(const std::string& out, int cols, int rows, int cell,
+              const std::string& character, int period) {
+    CharStyle st = (character == "luka") ? lukaStyle() : defaultStyle();
+    int n = cols * rows;
+    if (period <= 0) period = n; // 默认整张表一个完整步态周期
+    printf("[gensheet] %dx%d 格, 单元 %dpx, 角色=%s, 步态周期=%d帧 -> %s\n",
+           cols, rows, cell, character.c_str(), period, out.c_str());
     Image img(cols * cell, rows * cell);
     std::fill(img.px.begin(), img.px.end(), 255); // 白底
-    int n = cols * rows;
     for (int i = 0; i < n; ++i) {
         int gx = i % cols, gy = i / cols;
-        double phase = 2.0 * M_PI * i / n; // 每帧腿相位递进
-        drawCharacter(img, gx * cell, gy * cell, cell, phase);
+        double phase = 2.0 * M_PI * (i % period) / period; // 每帧腿相位递进
+        drawCharacter(img, gx * cell, gy * cell, cell, phase, st);
     }
     savePng(img, out);
     printf("[gensheet] 完成: %d 帧, 图尺寸 %dx%d\n", n, img.w, img.h);

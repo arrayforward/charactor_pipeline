@@ -49,7 +49,9 @@ std::string frameName(int idx, const char* prefix = "frame");
 // ---- 各管线阶段（实现分散在对应 .cpp） ----
 
 // sheet.cpp：生成合成测试帧表 / 切帧
-void genSheet(const std::string& out, int cols, int rows, int cell);
+// character: "default" | "luka"（巡音流歌风格）；period: 一个步态周期占多少帧（<=0 表示整张表一个周期）
+void genSheet(const std::string& out, int cols, int rows, int cell,
+              const std::string& character = "default", int period = 0);
 void sliceSheet(const std::string& sheet, int cols, int rows, const std::string& outDir);
 
 // matte.cpp：去背 + 连通域去碎屑 + 羽化 + color bleed

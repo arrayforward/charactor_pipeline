@@ -45,19 +45,29 @@ void detectCycle(const std::string& framesDir) {
 
     // 对每个候选周期 p，计算 frame[i] 与 frame[i+p] 的平均剪影距离
     int minP = 2, maxP = n / 2;
-    int bestP = -1;
-    double bestScore = 1e9;
+    std::vector<double> scores(maxP + 1, 0);
     printf("[cycle] 周期候选得分（越小越像）:\n");
     for (int p = minP; p <= maxP; ++p) {
         double sum = 0;
         int cnt = n - p;
         for (int i = 0; i < cnt; ++i) sum += silDist(sils[i], sils[i + p]);
-        double score = sum / cnt;
-        printf("[cycle]   p=%2d  score=%.4f\n", p, score);
-        if (score < bestScore) { bestScore = score; bestP = p; }
+        scores[p] = sum / cnt;
+        printf("[cycle]   p=%2d  score=%.4f\n", p, scores[p]);
     }
+    // 小 p 恒小（相邻帧总是最像），不能直接取最小。
+    // 取 "min 与 median 中位" 为阈值，选阈值之下最大的 p —— 真正的周期是深谷的远端。
+    double minScore = 1e9;
+    std::vector<double> sorted;
+    for (int p = minP; p <= maxP; ++p) { minScore = std::min(minScore, scores[p]); sorted.push_back(scores[p]); }
+    std::sort(sorted.begin(), sorted.end());
+    double median = sorted[sorted.size() / 2];
+    double threshold = (minScore + median) / 2;
+    int bestP = -1;
+    for (int p = maxP; p >= minP; --p)
+        if (scores[p] <= threshold) { bestP = p; break; }
     if (bestP < 0) throw std::runtime_error("cycle: 无法判定周期");
-    printf("[cycle] 检测到周期: %d 帧 (score=%.4f)\n", bestP, bestScore);
+    printf("[cycle] 检测到周期: %d 帧 (score=%.4f, min=%.4f median=%.4f)\n",
+           bestP, scores[bestP], minScore, median);
     printf("[cycle] 建议周期边界: ");
     for (int s = 0; s + bestP < n; s += bestP) printf("%d->%d  ", s, s + bestP);
     printf("\n");
@@ -67,16 +77,18 @@ void detectCycle(const std::string& framesDir) {
 
 void sampleFrames(const std::string& framesDir, int start, int end, int count,
                   const std::string& outDir) {
-    printf("[sample] %s [%d,%d] 等间隔取 %d 帧 -> %s\n",
+    printf("[sample] %s [%d,%d) 等间隔取 %d 帧 -> %s\n",
            framesDir.c_str(), start, end, count, outDir.c_str());
     auto files = listPngs(framesDir);
-    if (end < 0) end = int(files.size()) - 1;
-    if (start < 0 || end >= int(files.size()) || start > end)
+    if (end < 0) end = int(files.size());
+    if (start < 0 || end > int(files.size()) || start >= end)
         throw std::runtime_error("sample: start/end 越界（共 " + std::to_string(files.size()) + " 帧）");
     ensureDir(outDir);
     for (int i = 0; i < count; ++i) {
-        // 等间隔取帧（含首尾，线性插值取整）
-        int src = start + int(std::floor((end - start) * double(i) / std::max(1, count - 1) + 0.5));
+        // [start,end) 视为一个完整周期等分 count 份（end 与 start 同相位，不可取，
+        // 否则循环播放时首尾姿态重复会顿一拍）
+        int src = start + int(std::floor((end - start) * double(i) / count + 0.5));
+        src = std::min(src, end - 1);
         Image img = loadPng(files[src]);
         savePng(img, outDir + "/" + frameName(i));
         printf("[sample] out frame_%02d <= src 帧 %d\n", i, src);

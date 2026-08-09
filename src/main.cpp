@@ -51,6 +51,7 @@ void usage() {
         "charactor_pipeline - 2D sprite 角色生成管线（确定性后处理部分）\n"
         "用法: charactor_pipeline <子命令> [--key value ...]\n"
         "  gensheet --out sheet.png [--cols 4 --rows 3 --cell 256]\n"
+        "           [--character default|luka] [--period 0(整表一周期)]\n"
         "  slice    --sheet in.png --cols 4 --rows 3 --out dir/\n"
         "  matte    --in dir/ --out dir/ [--bg-lum 235 --bg-sat 0.12 --feather 1.5]\n"
         "  align    --in dir/ --out dir/ --canvas 256x256 [--anchor 0.5,0.86]\n"
@@ -58,7 +59,7 @@ void usage() {
         "  atlas    --in dir/ --normals dir/ --cols 4 --out color.png\n"
         "           --normals-out normal.png --meta atlas.json [--fps 11]\n"
         "  cycle    --frames dir/\n"
-        "  sample   --frames dir/ --start 27 --end 50 --count 12 --out dir/\n"
+        "  sample   --frames dir/ --start 27 --end 50 --count 12 --out dir/  (end 为排他边界)\n"
         "  render   --atlas color.png --normals normal.png --meta atlas.json --out demo/ [--frames 48]\n"
         "  all      --sheet in.png --cols 4 --rows 3 --out workdir/\n");
 }
@@ -92,7 +93,8 @@ int main(int argc, char** argv) {
     Args a = parseArgs(argc, argv, 2);
     try {
         if (cmd == "gensheet") {
-            genSheet(a.need("out"), a.getInt("cols", 4), a.getInt("rows", 3), a.getInt("cell", 256));
+            genSheet(a.need("out"), a.getInt("cols", 4), a.getInt("rows", 3), a.getInt("cell", 256),
+                     a.get("character", "default"), a.getInt("period", 0));
         } else if (cmd == "slice") {
             sliceSheet(a.need("sheet"), a.getInt("cols", 4), a.getInt("rows", 3), a.need("out"));
         } else if (cmd == "matte") {
