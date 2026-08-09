@@ -79,3 +79,18 @@ void sampleFrames(const std::string& framesDir, int start, int end, int count,
 // render.cpp：2D 动态光照渲染演示（输出 PNG 帧序列 + index.html）
 void renderDemo(const std::string& atlasPath, const std::string& normalsPath,
                 const std::string& metaPath, const std::string& outDir, int frames);
+
+// ai.cpp：内置 AI 生成环节（HTTP 走 curl CLI，配置从 config/pipeline.json 读 minimax 段）
+// 文生图：model 为空时用配置里的 image_model；产物按 URL 原样存盘（PNG/JPEG 均可）
+void aiGenImage(const std::string& prompt, const std::string& out,
+                const std::string& model, const std::string& aspect,
+                const std::string& configPath);
+// 图生视频：本地首帧图 base64 内嵌，异步任务轮询（每 10s，总超时 15min）后下载 mp4。
+// model 为空时用配置里的 video_model；名字含 "H3" 走 /v2 多模态 content[] 接口，
+// 其余（Hailuo/I2V 系列）走 /v1 的 prompt+first_frame_image 接口（file_id 换取下载地址）
+void aiGenVideo(const std::string& image, const std::string& prompt,
+                const std::string& out, int duration, const std::string& resolution,
+                const std::string& configPath, const std::string& model);
+// ffmpeg 抽帧为 frame_%04d.png 序列；ffmpeg 参数为空时依次找 tools/bin/ffmpeg、PATH
+void aiExtractFrames(const std::string& video, const std::string& outDir,
+                     const std::string& ffmpeg);

@@ -1,6 +1,6 @@
 # charactor_pipeline
 
-2D sprite 角色生成管线工具（C++17，零外部依赖）。设计文档见 [docs/thinking.txt](docs/thinking.txt)：一条"AI 生成 + 确定性后处理"的暗黑like角色 sprite 管线——**AI 环节（角色设定图 → 图生视频 → 逐帧高清重绘）由外部模型完成，本工具负责全部确定性后处理与运行时渲染演示**。
+2D sprite 角色生成管线工具（C++17，零外部依赖）。设计文档见 [docs/thinking.txt](docs/thinking.txt)：一条"AI 生成 + 确定性后处理"的暗黑like角色 sprite 管线——**AI 环节（文生图 → 图生视频）已内置于本工具（见「AI 生成环节」一节），工具同时负责全部确定性后处理与运行时渲染演示**。
 
 ## 构建（WSL / Ubuntu-22.04）
 
@@ -16,26 +16,100 @@ cmake --build build -j
 ## 管线流程
 
 ```
-AI 环节（工具之外）                确定性后处理（本工具）
+AI 环节（已内置，genimage/genvideo） 确定性后处理（本工具）
 ┌──────────────┐
-│ 角色设定图    │ 文生图
+│ genimage     │ 文生图：角色设定图（白底全身侧视）
 └──────┬───────┘
        ▼
 ┌──────────────┐
-│ 图生视频      │ 相机锁定、原地动作
+│ genvideo     │ 图生视频：相机锁定、原地行走循环
 └──────┬───────┘
        ▼
 ┌──────────────┐     ┌──────────┐   ┌──────────┐   ┌──────────┐
-│ 逐帧高清重绘  │────▶│ slice    │──▶│ matte    │──▶│ align    │
-│ (得到帧表/帧) │     │ 切帧+bbox│   │ 去背/羽化 │   │ 锚点对齐  │
+│ extract      │────▶│ cycle    │──▶│ sample   │──▶│ matte    │
+│ ffmpeg 抽帧   │     │ 周期检测  │   │ 周期抽帧  │   │ 去背/羽化 │
 └──────────────┘     └──────────┘   └──────────┘   └────┬─────┘
                                                         ▼
               ┌──────────┐   ┌──────────┐   ┌──────────┐
-              │ render   │◀──│ atlas    │◀──│ normal   │
+              │ render   │◀──│ atlas    │◀──│ normal   │◀── align（锚点对齐）
               │ 光照演示  │   │ 打图集   │   │ 法线估计  │
               └──────────┘   └──────────┘   └──────────┘
 
-视频帧序列分支: cycle（剪影自相似检测步态周期）→ sample（周期内等间隔采样）
+传统帧表分支: gensheet → slice（切帧+bbox）→ matte → align → normal → atlas → render
+```
+
+## AI 生成环节（C++ 内置）
+
+`genimage`/`genvideo`/`extract` 三个子命令把"设定图 → 行走视频 → 帧序列"接进了管线本体。
+HTTP 走系统 curl CLI（WSL / Git Bash 均自带），无第三方库；抽帧走 ffmpeg。
+
+### 配置
+
+```bash
+cp config/pipeline.example.json config/pipeline.json
+# 编辑 config/pipeline.json，填入你的 MiniMax api_key
+```
+
+**`config/pipeline.json` 已在 `.gitignore` 中，含真实密钥，绝不要提交。** 仓库公开，只提交
+`pipeline.example.json` 模板。当前用到 `providers.minimax` 段的
+`base_url` / `api_key` / `image_model` / `video_model` 四个字段。
+
+### 用法
+
+```bash
+# 文生图：MiniMax image-01，产物按 API 返回原样存盘（PNG/JPEG 均可）
+charactor_pipeline genimage --prompt "anime style full-body ..." --out ref.png \
+    [--model image-01] [--aspect 2:3] [--config config/pipeline.json]
+
+# 图生视频：首帧图 base64 内嵌，异步任务轮询（每 10s，总超时 15min）后下载 mp4
+# --model 缺省用配置 video_model；名字含 "H3" 走 /v2 多模态 content[] 接口，
+# 其余（如 MiniMax-Hailuo-2.3 / -02 / I2V-01）走 /v1 的 prompt+first_frame_image 接口
+charactor_pipeline genvideo --image ref.png --prompt "the character walks in place ..." \
+    --out walk.mp4 [--duration 6] [--resolution 768P] [--model MiniMax-H3] \
+    [--config config/pipeline.json]
+
+# 抽帧：ffmpeg 把视频解成 frame_0001.png 四位编号序列（配合 listPngs 排序）
+# ffmpeg 路径优先级：--ffmpeg 参数 > tools/bin/ffmpeg > PATH
+charactor_pipeline extract --video walk.mp4 --out frames/ [--ffmpeg tools/bin/ffmpeg]
+```
+
+> 注意：配置默认 `video_model = MiniMax-H3`（走 /v2 多模态接口）。H3 按账号 TokenPlan 计费开通，
+> 若 key 的套餐未包含 H3，API 会返回 `400 (2013) TokenPlan 或 Credit 暂不支持 MiniMax-H3 系列模型`；
+> 需要在 MiniMax 控制台升级/切换套餐，或临时用 `--model MiniMax-Hailuo-2.3` 兜底
+> （下方实跑示例即用的兜底模型；管线两种接口都支持，套餐开通后改回配置即可）。
+
+WSL 没有 ffmpeg 时可放一份静态构建到 `tools/bin/`（已 gitignore）：
+
+```bash
+curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz | tar -xJ
+cp ffmpeg-*-amd64-static/ffmpeg tools/bin/
+```
+
+### 端到端实跑：巡音流歌 24 帧行走入库
+
+```bash
+P=./build/charactor_pipeline; W=test_out/luka_ai
+$P genimage --aspect 2:3 --out $W/ref.png --prompt \
+    'anime style full-body character sprite of Megurine Luka: long straight pink hair
+     reaching to knees, black dress with gold trim, headset, perfect side profile view
+     facing right, standing straight, pure white background, clean sharp edges'
+# （若出图朝向偏左，可用 tools/bin/ffmpeg -i ref.png -vf hflip ref_right.png 水平翻转）
+$P genvideo --image $W/ref_right.png --out $W/walk.mp4 --duration 6 --resolution 768P \
+    --model MiniMax-Hailuo-2.3 --prompt \
+    'the character walks in place, side view always facing right, never turns around,
+     constant speed full walk cycles, camera locked completely static, pure white
+     background, no zoom no pan'
+$P extract --video $W/walk.mp4 --out $W/frames
+# 注意：cycle 的剪影基于 alpha 通道，原始视频帧 alpha 全 255，必须先去背再测周期
+$P matte --in $W/frames --out $W/matted_all
+$P cycle --frames $W/matted_all                   # 打印周期候选得分与边界建议（取深谷 p）
+$P sample --frames $W/matted_all --start <起点> --end <起点+周期> --count 24 --out $W/sampled
+$P align --in $W/sampled --out $W/aligned --canvas 256x256
+$P normal --in $W/aligned --out $W/normals
+$P atlas --in $W/aligned --normals $W/normals --cols 6 \
+    --out $W/atlas_color.png --normals-out $W/atlas_normal.png --meta $W/atlas.json --fps 18
+$P render --atlas $W/atlas_color.png --normals $W/atlas_normal.png \
+    --meta $W/atlas.json --out $W/demo --frames 48
 ```
 
 ## 子命令
@@ -123,4 +197,5 @@ src/normalmap.cpp  亮度高度场法线估计
 src/atlas.cpp      图集打包 + JSON 元数据
 src/cycle.cpp      步态周期检测 / 等间隔采样
 src/render.cpp     2D 动态光照渲染演示
+src/ai.cpp         AI 环节：极简 JSON、curl HTTP、base64、MiniMax 文生图/图生视频、ffmpeg 抽帧
 ```

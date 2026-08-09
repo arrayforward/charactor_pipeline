@@ -18,6 +18,7 @@ add_executable(charactor_pipeline
   src/atlas.cpp
   src/cycle.cpp
   src/render.cpp
+  src/ai.cpp
 )
 
 target_include_directories(charactor_pipeline PRIVATE third_party/stb)

@@ -1,0 +1,16 @@
+{
+  "providers": {
+    "minimax": {
+      "base_url": "https://api.minimaxi.com",
+      "api_key": "sk-xxx  # 替换成你的 MiniMax key",
+      "image_model": "image-01",
+      "image_model_live": "image-01-live",
+      "video_model": "MiniMax-H3"
+    },
+    "kimi": {
+      "base_url": "https://api.kimi.com/coding/v1",
+      "api_key": "sk-kimi-xxx  # 替换成你的 Kimi key（可选，用于视觉校验）",
+      "model": "k3"
+    }
+  }
+}

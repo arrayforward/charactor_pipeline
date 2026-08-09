@@ -61,7 +61,13 @@ void usage() {
         "  cycle    --frames dir/\n"
         "  sample   --frames dir/ --start 27 --end 50 --count 12 --out dir/  (end 为排他边界)\n"
         "  render   --atlas color.png --normals normal.png --meta atlas.json --out demo/ [--frames 48]\n"
-        "  all      --sheet in.png --cols 4 --rows 3 --out workdir/\n");
+        "  all      --sheet in.png --cols 4 --rows 3 --out workdir/\n"
+        "AI 生成环节（内置，走 MiniMax API + curl/ffmpeg）：\n"
+        "  genimage --prompt \"...\" --out ref.png [--model image-01] [--aspect 2:3]\n"
+        "           [--config config/pipeline.json]\n"
+        "  genvideo --image ref.png --prompt \"...\" --out walk.mp4 [--duration 6]\n"
+        "           [--resolution 768P] [--model MiniMax-H3] [--config config/pipeline.json]\n"
+        "  extract  --video walk.mp4 --out frames/ [--ffmpeg tools/bin/ffmpeg]\n");
 }
 
 void runAll(const Args& a) {
@@ -118,6 +124,15 @@ int main(int argc, char** argv) {
         } else if (cmd == "render") {
             renderDemo(a.need("atlas"), a.need("normals"), a.need("meta"), a.need("out"),
                        a.getInt("frames", 48));
+        } else if (cmd == "genimage") {
+            aiGenImage(a.need("prompt"), a.need("out"), a.get("model"),
+                       a.get("aspect", "2:3"), a.get("config", "config/pipeline.json"));
+        } else if (cmd == "genvideo") {
+            aiGenVideo(a.need("image"), a.need("prompt"), a.need("out"),
+                       a.getInt("duration", 6), a.get("resolution", "768P"),
+                       a.get("config", "config/pipeline.json"), a.get("model"));
+        } else if (cmd == "extract") {
+            aiExtractFrames(a.need("video"), a.need("out"), a.get("ffmpeg"));
         } else if (cmd == "all") {
             runAll(a);
         } else {

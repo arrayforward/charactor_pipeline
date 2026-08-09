@@ -1,2 +1,5 @@
 build/
 test_out/
+config/pipeline.json
+tools/bin/
+tools/.venv/
